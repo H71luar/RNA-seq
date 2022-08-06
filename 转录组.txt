@@ -1,0 +1,102 @@
+安装软件
+conda install fastqc 
+conda install multiqc
+conda install -c bioconda trim-galore
+conda install -c bioconda kallisto
+
+一、质控（fastqc->multiqc）
+fastqc *.gz -> multiqc ./ ->查看报告，检查测序质量，看是否需要去掉接头序列。
+
+二、去接头（去完后可以在fastqc看看结果）：trim_galore -q 25 --phred33 --length 30 --stringency 3 --paired -o $dir $fq1 $fq2
+
+三、利用参考transcript序列构建索引
+kallisto index -i rnqseq.idx CS_2H.fa
+
+四、利用上一步建立好的索引定量
+for f in $(cat newid);do kallisto quant -b 30 -i ../rnqseq.idx -o ./$f.quant -t 8 $f.R1_val_1.fq.gz $f.R2_val_2.fq.gz;done
+
+后续在R上用sleuth进行分析
+
+安装软件
+sleuth：
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install()
+BiocManager::install("devtools")    # only if devtools not yet installed
+BiocManager::install("pachterlab/sleuth")
+
+options(stringsAsFactors = F)
+library(sleuth)
+library(ggplot2)
+library(RColorBrewer)
+library(corrplot)
+library(dplyr)
+library(magrittr)
+
+base_dir <- setwd("D:\\RNA-seq")
+base_dir										#设置kallisto定量结果的文件夹
+sample_id <- dir(base_dir)
+sample_id										# 设置样品名称
+kal_dirs <- file.path(base_dir,sample_id)
+kal_dirs										# 设置每个样品对应的定量结果文件夹
+
+library(xlsx)
+s2c <- read.xlsx("D:\\RNA-seq/Design_matrix.xlsx",1,header = T)		#设置输入文件格式，第一列为样品名，第二列为处理情况（condition），第三列为重复组（1或2或3等）
+s2c
+s2c <- dplyr::mutate(s2c,path=kal_dirs)
+s2c																	#将每个样品对应的定量文件目录加到第四列
+
+t2g <- read.table("D:/RNA-seq/all_tg.txt",header = T,sep = "\t",stringsAsFactors = F)		#将转录本id和基因id输入文件
+head(t2g)
+
+两两比对：
+s2b <- dplyr::filter(s2c, condition == 35 | condition == 36)		# 选择需要进行比较的样本
+s2b
+so2 <- sleuth_prep(s2b,												# 利用sleuth包进行分析
+                   ~ condition,
+                   target_mapping = t2g,
+                   read_bootstrap_tpm = TRUE,
+                   num_cores = 1,
+                   aggregation_column = 'gene',
+                   gene_mode = TRUE,
+                   extra_bootstrap_summary = TRUE,
+                   transformation_function = function(x) log2(x + 0.5))
+				   
+				   
+				   
+ so2 <- sleuth_fit(so2, ~1, 'reduced')
+ so2 <- sleuth_fit(so2, ~condition, 'full')							# 利用两种模型鉴定不同组差异表达的转录本
+ 
+ models(so2)
+ 
+ oe <- sleuth_wt(so2,
+                which_beta = 'conditionCS-2H')							# 利用walds检验
+				
+
+
+sleuth_results_oe <- sleuth_results(oe,
+                                    test = 'conditionCS-2H',
+                                    show_all = TRUE)				#计算得到结果
+
+sleuth_results_oe <- na.omit(sleuth_results_oe)   #得到差异结果
+write.csv(sleuth_results_oe,"../V28_VS__V28N7_all.csv",row.names=FALSE,quote=TRUE) #将差异结果输出至csv文件
+
+so_lrt <- sleuth_lrt(so2, "reduced", "full")
+models(so_lrt)
+
+sleuth_matrix <- sleuth_to_matrix(so_lrt, 'obs_norm', 'tpm')			#得到表达量矩阵
+head(sleuth_matrix)
+write.csv(sleuth_matrix,"./all_tpm_norm_gene_level.csv",row.names=TRUE,quote=TRUE)
+sleuth_matrix <- read.csv("all_tpm_norm_gene_level.csv",header = T,sep=",")  #手动给第一个单元格加上target_id，再读入
+final_result <- merge(sleuth_matrix,sleuth_results_oe,by="target_id")		# 合并两个文件，为后续筛选准备
+write.csv(final_result,"./final_result.csv",row.names=FALSE,quote=TRUE)
+
+查看样本相关性：
+xx <- sleuth_matrix[,2:5]
+expcor <- cor(xx,method = "spearman")
+head(expcor)
+
+b <- pheatmap::pheatmap(expcor, clustering_method = "centroid",
+                        treeheight_row = 0,treeheight_col = 0,
+                        display_numbers = T)
