@@ -92,7 +92,7 @@ sleuth_matrix <- read.csv("all_tpm_norm_gene_level.csv",header = T,sep=",")  #�
 final_result <- merge(sleuth_matrix,sleuth_results_oe,by="target_id")		# 合并两个文件，为后续筛选准备
 write.csv(final_result,"./final_result.csv",row.names=FALSE,quote=TRUE)
 
-查看样本相关性：
+#查看样本相关性：
 xx <- sleuth_matrix[,2:5]
 expcor <- cor(xx,method = "spearman")
 head(expcor)
