@@ -80,7 +80,7 @@ sleuth_results_oe <- sleuth_results(oe,
                                     show_all = TRUE)				#计算得到结果
 
 sleuth_results_oe <- na.omit(sleuth_results_oe)   #得到差异结果
-write.csv(sleuth_results_oe,"../V28_VS__V28N7_all.csv",row.names=FALSE,quote=TRUE) #将差异结果输出至csv文件
+write.csv(sleuth_results_oe,"./V28_VS__V28N7_all.csv",row.names=FALSE,quote=TRUE) #将差异结果输出至csv文件
 
 so_lrt <- sleuth_lrt(so2, "reduced", "full")
 models(so_lrt)
